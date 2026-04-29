@@ -2,6 +2,9 @@
 
 多团队 AI 助手部署框架。一套代码，多实例隔离部署，支持智能路由、Claude Code 集成和三层自愈记忆系统。
 
+<img width="2044" height="676" alt="image" src="https://github.com/user-attachments/assets/08c29769-ba18-485c-bd2f-48a368fc6520" />
+
+
 ## 使用场景
 
 当一个组织内有多个团队（如芯片研发、验证、项目管理、架构设计），每个团队需要**独立的 AI 助手**，各自拥有不同的知识库、技能和系统提示词，但又希望有一个**统一入口**智能分发请求时，Agent Harness 提供了完整的解决方案。
@@ -53,6 +56,9 @@ Docker Compose 一键启动 16 个服务（4 team x 3 容器 + Router API + Rout
 - **会话恢复**：关闭浏览器后重新打开，历史对话完整保留
 - **会话列表**：左侧栏展示所有历史会话，支持搜索和切换
 - **会话分享**：生成公开链接分享给同事（Token 鉴权，7 天过期）
+
+<img width="1372" height="1079" alt="image" src="https://github.com/user-attachments/assets/4396c04c-55bf-4e0d-920e-bf9225670ce6" />
+
 
 ### 2. 流式输出与工具调用标注
 
@@ -149,6 +155,11 @@ Router 是整个系统的"大脑"，负责将用户请求智能分发到最合�
 │  └────────────────────────────────────────────────────┘      │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+<img width="965" height="1347" alt="image" src="https://github.com/user-attachments/assets/a9394766-1f26-4f6b-b2c8-68bb9ebe3903" />
+
+<img width="1578" height="1138" alt="image" src="https://github.com/user-attachments/assets/a80db49f-ed0f-43d4-aa44-b9c7ddaafb40" />
+
 
 **三层路由引擎**：
 1. **关键词直接映射**：如 "UVM" → team-b，"飞书" → team-c
