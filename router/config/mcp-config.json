@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agent-router": {
+      "command": "node",
+      "args": ["/data/agent_harness/router/lib/mcpServer.js"],
+      "env": {
+        "ROUTER_API_URL": "http://localhost:4000"
+      }
+    }
+  }
+}

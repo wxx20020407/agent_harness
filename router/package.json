@@ -1,0 +1,19 @@
+{
+  "name": "agent-router",
+  "version": "1.0.0",
+  "description": "Agent Harness Router Platform - Multi-agent routing and management",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "yaml": "^2.3.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,18 @@
+# API 镜像（离线模式）
+# node_modules 在宿主机预先安装后 COPY 进来，构建时不需要 npm install
+FROM node:18-alpine
+
+# 安装 docker CLI（用于通过 docker.sock 执行容器重启等操作）
+# 使用清华镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+    && apk add --no-cache docker-cli
+
+WORKDIR /app
+
+COPY src/api/package.json ./
+# 离线：直接 COPY 预装好的 node_modules（在宿主机 npm install 生成）
+COPY src/api/node_modules ./node_modules
+COPY src/api/server.js ./
+
+EXPOSE 3000
+CMD ["node", "server.js"]

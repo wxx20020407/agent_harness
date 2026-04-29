@@ -1,0 +1,15 @@
+# Docling 文档转换服务依赖
+# 安装命令: pip install -r requirements-docling.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 核心
+docling>=2.80.0
+fastapi>=0.100.0
+uvicorn>=0.20.0
+
+# 图片描述 (SmolVLM 本地模型)
+torch>=2.0.0
+transformers>=4.40.0
+Pillow>=10.0.0
+
+# 可选: 如果需要 mimo API 调用
+# requests>=2.28.0

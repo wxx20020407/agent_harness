@@ -1,0 +1,33 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "internal-llm/zhipuai/glm-5",
+  "provider": {
+    "internal-llm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Internal LLM",
+      "env": ["LLM_API_KEY"],
+      "options": {
+        "baseURL": "${LLM_BASE_URL}"
+      },
+      "models": {
+        "zhipuai/glm-5": {
+          "name": "glm-5"
+        }
+      }
+    }
+  },
+  "enabled_providers": ["internal-llm"],
+  "server": {
+    "hostname": "0.0.0.0",
+    "port": 4096
+  },
+  "instructions": ["./AGENTS.md"],
+  "permission": {
+    "skill": { "*": "allow" },
+    "read": "allow",
+    "list": "allow",
+    "edit": "allow",
+    "write": "allow",
+    "bash": "allow"
+  }
+}

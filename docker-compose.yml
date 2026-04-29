@@ -1,0 +1,462 @@
+version: '3.8'
+
+# =============================================================================
+# Agent Harness - 一套代码多团队部署
+# 运行方式：在项目根目录执行 docker compose up -d
+#
+# 离线部署说明：
+#   所有镜像必须提前 docker load 到目标机器
+#   包括：opencode镜像、node:18-alpine、nginx:alpine
+#
+# Docling 运行模式（通过环境变量切换）：
+#   DOCLING_MODE=docker  - 使用 Docker 容器运行（需先 load 镜像）
+#   DOCLING_MODE=host    - 使用宿主机运行（需先启动宿主机 docling 服务）
+#   默认：host
+#
+# 宿主机模式启动命令：
+#   cd /data/agent_harness && python3 -m venv venv-docling
+#   source venv-docling/bin/activate
+#   pip install docling flask -i https://pypi.tuna.tsinghua.edu.cn/simple
+#   nohup python deploy/docling-server.py > logs/docling.log 2>&1 &
+# =============================================================================
+
+x-api-common: &api-common
+  build:
+    context: .               # 构建上下文为项目根目录
+    dockerfile: deploy/Dockerfile.api
+  restart: unless-stopped
+
+x-ui-common: &ui-common
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile.ui
+  restart: unless-stopped
+
+services:
+
+  # ===========================================================================
+  # Router Platform (新增)
+  # ===========================================================================
+  # 统一入口，智能路由到各团队 Agent
+  # 端口：
+  #   - 4000: Router API
+  #   - 4303: Router UI (待实现)
+  # ===========================================================================
+
+  router-api:
+    build:
+      context: .
+      dockerfile: router/Dockerfile
+    ports:
+      - "4000:3000"
+    environment:
+      - PORT=3000
+      - CONFIG_PATH=/config
+    volumes:
+      - ./router/config:/config:ro
+      - ./data:/app/data
+    depends_on:
+      api-team-a:
+        condition: service_healthy
+      api-team-b:
+        condition: service_healthy
+      api-team-c:
+        condition: service_healthy
+      api-team-d:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  router-ui:
+    <<: *ui-common
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.ui
+      args:
+        - TEAM_ID=router
+    environment:
+      - API_UPSTREAM_URL=http://router-api:3000
+    ports:
+      - "4303:80"
+    depends_on:
+      - router-api
+
+  # ===========================================================================
+  # Team A
+  # ===========================================================================
+
+  opencode-team-a:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.opencode
+      args:
+        - OPENCODE_IMAGE=${OPENCODE_IMAGE:-ghcr.io/sst/opencode:latest}
+    command: serve --hostname 0.0.0.0 --port 4096
+    working_dir: /workspace
+    volumes:
+      - ./teams/team-a:/workspace
+    environment:
+      - OPENCODE_SERVER_PASSWORD=${TEAM_A_PASSWORD:-team-a-secret}
+      # LLM 配置：由 opencode.json 中 ${...} / env[] 语法引用
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_HELPER_MODEL=${LLM_HELPER_MODEL:-zhipuai/glm-4-flash}
+      # 离线环境：阻断 bun 向 npm registry 发起网络请求
+      - BUN_CONFIG_REGISTRY=http://127.0.0.1:0
+      - OPENCODE_CONFIG=/workspace/opencode.json
+      - OPENCODE_CONFIG_DIR=/workspace
+      - 'OPENCODE_CONFIG_CONTENT={"model":"internal-llm/zhipuai/glm-5","provider":{"internal-llm":{"npm":"@ai-sdk/openai-compatible","name":"Internal LLM","env":["LLM_API_KEY"],"options":{"baseURL":"${LLM_BASE_URL}"},"models":{"zhipuai/glm-5":{"name":"glm-5"}}}},"enabled_providers":["internal-llm"],"server":{"hostname":"0.0.0.0","port":4096},"instructions":["./AGENTS.md"],"permission":{"skill":{"*":"allow"},"read":"allow","list":"allow","edit":"allow","write":"allow","bash":"allow"}}'
+    ports:
+      - "4101:4096"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --server-response -O/dev/null http://127.0.0.1:4096/ 2>&1 | grep -qE 'HTTP/[0-9.]+ (200|401)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Docling 文档转换服务
+  # ===========================================================================
+  # 运行模式切换：
+  #   - Docker 模式：DOCLING_MODE=docker docker compose up -d
+  #   - 宿主机模式：DOCLING_MODE=host docker compose up -d（默认）
+  #
+  # 宿主机模式需先启动 docling 服务：
+  #   source venv-docling/bin/activate
+  #   python deploy/docling-server.py  # 监听 5000 端口
+
+  # Docling 容器服务（仅 DOCLING_MODE=docker 时启动）
+  docling:
+    image: docling:offline
+    profiles:
+      - docling-docker    # 只有指定 profile 时才启动
+    volumes:
+      - ./models/huggingface:/models:ro
+      - ./teams/team-a:/workspace/team-a
+    environment:
+      - PORT=5000
+    ports:
+      - "4501:5000"
+    restart: unless-stopped
+
+  # 启动时自动将 kb/skills 中的文档转为 .md（一次性任务）
+  # 离线部署：需先 docker load < python-3.11-slim.tar.gz
+  # 注意：宿主机模式需先启动 docling 服务：./deploy/start-docling-host.sh start
+  # 离线环境：使用 profiles 禁用此服务，需要时手动启用
+  init-convert-team-a:
+    image: python:3.11-slim
+    profiles:
+      - init-convert  # 默认不启动，需要时用 --profile init-convert
+    working_dir: /workspace
+    volumes:
+      - ./teams/team-a:/workspace
+      - ./tools:/tools:ro  # 通用工具目录
+    environment:
+      # DOCLING_URL 根据模式自动选择：
+      #   - 宿主机模式：通过 host.docker.internal 访问宿主机
+      #   - Docker 模式：通过容器名访问
+      # 默认使用 mentor 增强版（端口 5001），简化版用端口 5000
+      - DOCLING_URL=${DOCLING_URL:-http://host.docker.internal:5001}
+      # DOCLING_PATH_PREFIX: 宿主机上 teams/team-a 的绝对路径
+      - DOCLING_PATH_PREFIX=/data/agent_harness/teams/team-a
+    command: python3 /tools/auto_convert_all.py /workspace/kb /workspace/skills
+    restart: "no"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Linux 下支持 host.docker.internal
+
+  api-team-a:
+    <<: *api-common
+    user: root  # 需要 root 权限访问 docker.sock
+    privileged: true
+    environment:
+      - TEAM_ID=team-a
+      - TEAM_NAME=Team A Agent
+      - TEAM_DIR=/teams/team-a
+      - OPENCODE_URL=http://opencode-team-a:4096
+      - OPENCODE_PASSWORD=${TEAM_A_PASSWORD:-team-a-secret}
+      - PORT=3000
+    volumes:
+      - ./teams/team-a:/teams/team-a  # 读写挂载，支持附件上传
+      - ./data:/data/agent_harness/data  # 持久化 session 和 message 数据
+      - ./.env:/data/agent_harness/.env:ro  # 只读挂载 LLM 配置
+      - /var/run/docker.sock:/var/run/docker.sock  # 允许 API 容器执行 docker 命令
+    group_add:
+      - "120"
+    ports:
+      - "4201:3000"
+    depends_on:
+      opencode-team-a:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  ui-team-a:
+    <<: *ui-common
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.ui
+      args:
+        - TEAM_ID=team-a          # 指向 dist/team-a/（预构建产物）
+    environment:
+      - API_UPSTREAM_URL=http://api-team-a:3000
+    ports:
+      - "4301:80"
+    depends_on:
+      - api-team-a
+
+  # 新版 UI（独立服务，不影响原有 UI）
+  ui-team-a-new:
+    <<: *ui-common
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.ui
+      args:
+        - TEAM_ID=team-a-new      # 指向 dist/team-a-new/
+    environment:
+      - API_UPSTREAM_URL=http://api-team-a:3000
+    ports:
+      - "4302:80"
+    depends_on:
+      - api-team-a
+
+  # ===========================================================================
+  # Team B - 芯片验证助手
+  # ===========================================================================
+
+  opencode-team-b:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.opencode
+      args:
+        - OPENCODE_IMAGE=${OPENCODE_IMAGE:-ghcr.io/sst/opencode:latest}
+    command: serve --hostname 0.0.0.0 --port 4096
+    working_dir: /workspace
+    volumes:
+      - ./teams/team-b:/workspace
+    environment:
+      - OPENCODE_SERVER_PASSWORD=${TEAM_B_PASSWORD:-team-b-secret}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_HELPER_MODEL=${LLM_HELPER_MODEL:-zhipuai/glm-4-flash}
+      - BUN_CONFIG_REGISTRY=http://127.0.0.1:0
+      - OPENCODE_CONFIG=/workspace/opencode.json
+      - OPENCODE_CONFIG_DIR=/workspace
+      - 'OPENCODE_CONFIG_CONTENT={"model":"internal-llm/zhipuai/glm-5","provider":{"internal-llm":{"npm":"@ai-sdk/openai-compatible","name":"Internal LLM","env":["LLM_API_KEY"],"options":{"baseURL":"${LLM_BASE_URL}"},"models":{"zhipuai/glm-5":{"name":"glm-5"}}}},"enabled_providers":["internal-llm"],"server":{"hostname":"0.0.0.0","port":4096},"instructions":["./AGENTS.md"],"permission":{"skill":{"*":"allow"},"read":"allow","list":"allow","edit":"allow","write":"allow","bash":"allow"}}'
+    ports:
+      - "4102:4096"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --server-response -O/dev/null http://127.0.0.1:4096/ 2>&1 | grep -qE 'HTTP/[0-9.]+ (200|401)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  api-team-b:
+    <<: *api-common
+    user: root
+    privileged: true
+    environment:
+      - TEAM_ID=team-b
+      - TEAM_NAME=Team B Agent
+      - TEAM_DIR=/teams/team-b
+      - OPENCODE_URL=http://opencode-team-b:4096
+      - OPENCODE_PASSWORD=${TEAM_B_PASSWORD:-team-b-secret}
+      - PORT=3000
+    volumes:
+      - ./teams/team-b:/teams/team-b
+      - ./data:/data/agent_harness/data
+      - ./.env:/data/agent_harness/.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "120"
+    ports:
+      - "4202:3000"
+    depends_on:
+      opencode-team-b:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  ui-team-b:
+    <<: *ui-common
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.ui
+      args:
+        - TEAM_ID=team-a
+    environment:
+      - API_UPSTREAM_URL=http://api-team-b:3000
+    ports:
+      - "4312:80"
+    depends_on:
+      - api-team-b
+
+  # ===========================================================================
+  # Team C - 飞书集成 & 项目管理助手
+  # ===========================================================================
+
+  opencode-team-c:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.opencode
+      args:
+        - OPENCODE_IMAGE=${OPENCODE_IMAGE:-ghcr.io/sst/opencode:latest}
+    command: serve --hostname 0.0.0.0 --port 4096
+    working_dir: /workspace
+    volumes:
+      - ./teams/team-c:/workspace
+    environment:
+      - OPENCODE_SERVER_PASSWORD=${TEAM_C_PASSWORD:-team-c-secret}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_HELPER_MODEL=${LLM_HELPER_MODEL:-zhipuai/glm-4-flash}
+      - BUN_CONFIG_REGISTRY=http://127.0.0.1:0
+      - OPENCODE_CONFIG=/workspace/opencode.json
+      - OPENCODE_CONFIG_DIR=/workspace
+      - 'OPENCODE_CONFIG_CONTENT={"model":"internal-llm/zhipuai/glm-5","provider":{"internal-llm":{"npm":"@ai-sdk/openai-compatible","name":"Internal LLM","env":["LLM_API_KEY"],"options":{"baseURL":"${LLM_BASE_URL}"},"models":{"zhipuai/glm-5":{"name":"glm-5"}}}},"enabled_providers":["internal-llm"],"server":{"hostname":"0.0.0.0","port":4096},"instructions":["./AGENTS.md"],"permission":{"skill":{"*":"allow"},"read":"allow","list":"allow","edit":"allow","write":"allow","bash":"allow"}}'
+    ports:
+      - "4103:4096"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --server-response -O/dev/null http://127.0.0.1:4096/ 2>&1 | grep -qE 'HTTP/[0-9.]+ (200|401)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  api-team-c:
+    <<: *api-common
+    user: root
+    privileged: true
+    environment:
+      - TEAM_ID=team-c
+      - TEAM_NAME=Team C Agent
+      - TEAM_DIR=/teams/team-c
+      - OPENCODE_URL=http://opencode-team-c:4096
+      - OPENCODE_PASSWORD=${TEAM_C_PASSWORD:-team-c-secret}
+      - PORT=3000
+    volumes:
+      - ./teams/team-c:/teams/team-c
+      - ./data:/data/agent_harness/data
+      - ./.env:/data/agent_harness/.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "120"
+    ports:
+      - "4203:3000"
+    depends_on:
+      opencode-team-c:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  ui-team-c:
+    <<: *ui-common
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.ui
+      args:
+        - TEAM_ID=team-a
+    environment:
+      - API_UPSTREAM_URL=http://api-team-c:3000
+    ports:
+      - "4313:80"
+    depends_on:
+      - api-team-c
+
+  # ===========================================================================
+  # Team D - 架构图 & 可视化助手
+  # ===========================================================================
+
+  opencode-team-d:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.opencode
+      args:
+        - OPENCODE_IMAGE=${OPENCODE_IMAGE:-ghcr.io/sst/opencode:latest}
+    command: serve --hostname 0.0.0.0 --port 4096
+    working_dir: /workspace
+    volumes:
+      - ./teams/team-d:/workspace
+    environment:
+      - OPENCODE_SERVER_PASSWORD=${TEAM_D_PASSWORD:-team-d-secret}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_HELPER_MODEL=${LLM_HELPER_MODEL:-zhipuai/glm-4-flash}
+      - BUN_CONFIG_REGISTRY=http://127.0.0.1:0
+      - OPENCODE_CONFIG=/workspace/opencode.json
+      - OPENCODE_CONFIG_DIR=/workspace
+      - 'OPENCODE_CONFIG_CONTENT={"model":"internal-llm/zhipuai/glm-5","provider":{"internal-llm":{"npm":"@ai-sdk/openai-compatible","name":"Internal LLM","env":["LLM_API_KEY"],"options":{"baseURL":"${LLM_BASE_URL}"},"models":{"zhipuai/glm-5":{"name":"glm-5"}}}},"enabled_providers":["internal-llm"],"server":{"hostname":"0.0.0.0","port":4096},"instructions":["./AGENTS.md"],"permission":{"skill":{"*":"allow"},"read":"allow","list":"allow","edit":"allow","write":"allow","bash":"allow"}}'
+    ports:
+      - "4104:4096"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --server-response -O/dev/null http://127.0.0.1:4096/ 2>&1 | grep -qE 'HTTP/[0-9.]+ (200|401)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  api-team-d:
+    <<: *api-common
+    user: root
+    privileged: true
+    environment:
+      - TEAM_ID=team-d
+      - TEAM_NAME=Team D Agent
+      - TEAM_DIR=/teams/team-d
+      - OPENCODE_URL=http://opencode-team-d:4096
+      - OPENCODE_PASSWORD=${TEAM_D_PASSWORD:-team-d-secret}
+      - PORT=3000
+    volumes:
+      - ./teams/team-d:/teams/team-d
+      - ./data:/data/agent_harness/data
+      - ./.env:/data/agent_harness/.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "120"
+    ports:
+      - "4204:3000"
+    depends_on:
+      opencode-team-d:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  ui-team-d:
+    <<: *ui-common
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.ui
+      args:
+        - TEAM_ID=team-a
+    environment:
+      - API_UPSTREAM_URL=http://api-team-d:3000
+    ports:
+      - "4314:80"
+    depends_on:
+      - api-team-d

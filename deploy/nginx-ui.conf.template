@@ -1,0 +1,44 @@
+# UI 容器内的 nginx 配置模板
+# 启动时 nginx 官方镜像自动将 ${API_UPSTREAM_URL} 替换为环境变量值
+
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+    charset utf-8;
+
+    # 代理 /api 到后端 API 容器
+    location /api/ {
+        proxy_pass ${API_UPSTREAM_URL}/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';       # SSE 需要关闭 keep-alive 复用
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_buffering off;                  # SSE 必须关闭缓冲
+        proxy_read_timeout 900s;              # 15分钟，LLM响应可能很慢
+        chunked_transfer_encoding on;
+    }
+
+    # 后端 API 端点直接代理（Router UI 直接调用 /route, /agents 等）
+    location ~ ^/(route|agents|health|sessions|chat|a2a|\.well-known) {
+        proxy_pass ${API_UPSTREAM_URL}$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_buffering off;
+        proxy_read_timeout 900s;
+        chunked_transfer_encoding on;
+    }
+
+    # SPA fallback
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 静态资源缓存
+    location ~* \.(js|css|png|ico|woff2?)$ {
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+}

@@ -1,0 +1,202 @@
+# =============================================================================
+# Agent Harness - Agent Registry Configuration
+# =============================================================================
+# Each agent entry defines:
+# - Basic info (name, description)
+# - Endpoint configuration
+# - Routing rules (keywords, priority)
+# - Resources (skills, kb) - permission isolated per agent
+# =============================================================================
+
+agents:
+  # ===========================================================================
+  # Team A - 研发助手
+  # ===========================================================================
+  team-a:
+    name: "Team A Agent"
+    description: "研发助手，专注于 ARM CPU、嵌入式开发和芯片相关问题"
+
+    # API endpoint configuration
+    endpoint:
+      url: "http://api-team-a:3000"
+      healthCheck: "/health"
+      timeout: 300000  # 5 minutes
+
+    # Routing configuration
+    routing:
+      keywords:
+        - "ARM"
+        - "CPU"
+        - "功耗"
+        - "嵌入式"
+        - "芯片"
+        - "SoC"
+        - "处理器"
+        - "性能分析"
+        - "trace"
+        - "ANR"
+      priority: 10
+      description: "芯片架构、CPU性能、功耗分析相关问题"
+
+    # Agent-specific resources (permission isolated)
+    resources:
+      skills:
+        - name: "soc-power-prediction"
+          description: "SoC 功耗预测技能"
+          path: "skills/soc-power-prediction"
+      kb:
+        - name: "ARM_TRM_CPU"
+          description: "ARM CPU 技术参考手册"
+          path: "kb/ARM_TRM_CPU"
+
+    # Metadata
+    metadata:
+      owner: "team-a@example.com"
+      created: "2024-03-01"
+      tags: ["研发", "嵌入式", "芯片", "ARM"]
+      status: "active"
+
+  # ===========================================================================
+  # Team B - 芯片验证助手
+  # ===========================================================================
+  team-b:
+    name: "Team B Agent"
+    description: "芯片验证助手，专注于 UVM、验证方法学和仿真调试"
+
+    endpoint:
+      url: "http://api-team-b:3000"
+      healthCheck: "/health"
+      timeout: 300000
+
+    routing:
+      keywords:
+        - "UVM"
+        - "验证"
+        - "仿真"
+        - "断言"
+        - "覆盖率"
+        - "Testbench"
+        - "波形"
+        - "Verdi"
+        - "CDC"
+        - "时序"
+        - "回归"
+        - "功能覆盖"
+      priority: 10
+      description: "芯片验证、UVM方法学、仿真调试相关问题"
+
+    resources:
+      skills:
+        - name: "uvm-best-practices"
+          description: "UVM 最佳实践"
+          path: "skills/uvm-best-practices"
+        - name: "assertion-examples"
+          description: "SystemVerilog 断言示例"
+          path: "skills/assertion-examples"
+      kb:
+        - name: "verification-methodology"
+          description: "芯片验证方法论"
+          path: "kb/verification-methodology"
+
+    metadata:
+      owner: "team-b@example.com"
+      created: "2024-03-01"
+      tags: ["验证", "UVM", "仿真"]
+      status: "active"
+
+  # ===========================================================================
+  # Team C - 飞书集成 & 项目管理助手
+  # ===========================================================================
+  team-c:
+    name: "Team C Agent"
+    description: "飞书集成助手，专注于项目管理、多维表格和团队协作"
+
+    endpoint:
+      url: "http://api-team-c:3000"
+      healthCheck: "/health"
+      timeout: 300000
+
+    routing:
+      keywords:
+        - "飞书"
+        - "多维表格"
+        - "Bitable"
+        - "任务同步"
+        - "月度任务"
+        - "项目管理"
+        - "周报"
+        - "月报"
+        - "OKR"
+        - "协作"
+        - "文档管理"
+      priority: 8
+      description: "飞书平台集成、项目管理、任务跟踪相关问题"
+
+    resources:
+      skills:
+        - name: "monthly-report-sync"
+          description: "月度任务同步到飞书多维表格"
+          path: "skills/monthly_report_sync"
+      kb:
+        - name: "feishu-integration"
+          description: "飞书集成知识库"
+          path: "kb"
+
+    metadata:
+      owner: "team-c@example.com"
+      created: "2024-03-01"
+      tags: ["飞书", "项目管理", "协作", "多维表格"]
+      status: "active"
+
+  # ===========================================================================
+  # Team D - 架构图 & 可视化助手
+  # ===========================================================================
+  team-d:
+    name: "Team D Agent"
+    description: "架构图助手，专注于技术架构图生成和可视化设计"
+
+    endpoint:
+      url: "http://api-team-d:3000"
+      healthCheck: "/health"
+      timeout: 300000
+
+    routing:
+      keywords:
+        - "架构图"
+        - "系统架构"
+        - "拓扑图"
+        - "SVG"
+        - "可视化"
+        - "流程图"
+        - "部署图"
+        - "网络图"
+        - "数据流"
+        - "图表"
+        - "设计图"
+      priority: 8
+      description: "架构图生成、系统可视化、技术图表相关问题"
+
+    resources:
+      skills:
+        - name: "architecture-diagram"
+          description: "生成暗色主题架构图"
+          path: "skills/architecture-diagram"
+      kb:
+        - name: "design-system"
+          description: "设计系统和可视化知识库"
+          path: "kb"
+
+    metadata:
+      owner: "team-d@example.com"
+      created: "2024-03-01"
+      tags: ["架构图", "可视化", "SVG", "设计"]
+      status: "active"
+
+# =============================================================================
+# Default Settings
+# =============================================================================
+defaults:
+  healthCheckInterval: 30000  # 30 seconds
+  requestTimeout: 300000      # 5 minutes
+  maxRetries: 3
+  retryDelay: 1000           # 1 second

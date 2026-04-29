@@ -1,0 +1,16 @@
+# UI 镜像（离线模式）
+# UI 在宿主机预先构建到 dist/<team-id>/，这里只做静态托管
+# 不需要 node:18-alpine 构建阶段，不需要 npm install
+
+ARG TEAM_ID=team-a
+
+FROM nginx:alpine
+
+ARG TEAM_ID
+# 使用预构建的静态产物
+COPY dist/${TEAM_ID} /usr/share/nginx/html
+
+# nginx 配置模板（启动时 envsubst 替换 ${API_UPSTREAM_URL}）
+COPY deploy/nginx-ui.conf.template /etc/nginx/templates/default.conf.template
+
+EXPOSE 80

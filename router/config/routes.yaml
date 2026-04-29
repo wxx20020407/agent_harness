@@ -1,0 +1,197 @@
+# =============================================================================
+# Agent Harness - Routing Rules Configuration
+# =============================================================================
+# Defines routing rules for directing user requests to appropriate agents.
+# Reference: D-Claw routing architecture
+# =============================================================================
+
+# =============================================================================
+# Priority Rules
+# =============================================================================
+# Rules are evaluated in order. First matching rule wins.
+# Each rule has:
+# - name: Rule identifier
+# - condition: When to apply this rule
+# - priority_check: Ordered list of keyword checks
+# =============================================================================
+rules:
+  # ---------------------------------------------------------------------------
+  # Chip vs Test disambiguation
+  # ---------------------------------------------------------------------------
+  - name: "chip_vs_test"
+    condition: "技术问题"
+    description: "区分芯片问题和测试问题"
+    priority_check:
+      - keywords: ["ARM", "CPU", "功耗", "芯片", "SoC", "处理器", "性能", "trace", "ANR"]
+        target: "team-a"
+        weight: 1.0
+      - keywords: ["测试", "用例", "自动化", "测试框架", "覆盖率"]
+        target: "team-b"
+        weight: 1.0
+
+  # ---------------------------------------------------------------------------
+  # Performance analysis routing
+  # ---------------------------------------------------------------------------
+  - name: "performance_routing"
+    condition: "性能问题"
+    description: "性能分析相关路由"
+    priority_check:
+      - keywords: ["功耗", "power", "功耗分析", "功耗预测"]
+        target: "team-a"
+        weight: 1.0
+      - keywords: ["性能", "卡顿", "ANR", "启动慢", "性能分析"]
+        target: "team-a"
+        weight: 0.9
+
+  # ---------------------------------------------------------------------------
+  # Verification routing
+  # ---------------------------------------------------------------------------
+  - name: "verification_routing"
+    condition: "验证问题"
+    description: "验证相关路由"
+    priority_check:
+      - keywords: ["UVM", "uvm", "验证", "Testbench", "testbench"]
+        target: "team-b"
+        weight: 1.0
+      - keywords: ["断言", "assertion", "SVA", "覆盖率", "coverage"]
+        target: "team-b"
+        weight: 0.95
+      - keywords: ["仿真", "波形", "Verdi", "FSDB", "CDC", "时序"]
+        target: "team-b"
+        weight: 0.9
+
+  # ---------------------------------------------------------------------------
+  # 飞书/项目管理路由
+  # ---------------------------------------------------------------------------
+  - name: "feishu_routing"
+    condition: "飞书或项目管理问题"
+    description: "飞书集成和项目管理相关路由"
+    priority_check:
+      - keywords: ["飞书", "多维表格", "Bitable", "bitable"]
+        target: "team-c"
+        weight: 1.0
+      - keywords: ["任务同步", "月度任务", "任务牵引"]
+        target: "team-c"
+        weight: 1.0
+      - keywords: ["周报", "月报", "OKR", "项目管理"]
+        target: "team-c"
+        weight: 0.9
+      - keywords: ["文档管理", "知识库", "协作"]
+        target: "team-c"
+        weight: 0.8
+
+  # ---------------------------------------------------------------------------
+  # 架构图/可视化路由
+  # ---------------------------------------------------------------------------
+  - name: "diagram_routing"
+    condition: "架构图或可视化问题"
+    description: "架构图生成和可视化相关路由"
+    priority_check:
+      - keywords: ["架构图", "系统架构", "拓扑图", "部署图"]
+        target: "team-d"
+        weight: 1.0
+      - keywords: ["SVG", "可视化", "图表", "设计图"]
+        target: "team-d"
+        weight: 0.95
+      - keywords: ["流程图", "数据流", "网络图"]
+        target: "team-d"
+        weight: 0.9
+
+# =============================================================================
+# Keyword Mappings
+# =============================================================================
+# Direct keyword-to-agent mappings for simple routing
+# =============================================================================
+keyword_mappings:
+  # Team A keywords
+  "ARM": "team-a"
+  "CPU": "team-a"
+  "功耗": "team-a"
+  "芯片": "team-a"
+  "SoC": "team-a"
+  "处理器": "team-a"
+  "嵌入式": "team-a"
+  "trace": "team-a"
+  "性能分析": "team-a"
+  "ANR": "team-a"
+
+  # Team B keywords
+  "UVM": "team-b"
+  "验证": "team-b"
+  "仿真": "team-b"
+  "断言": "team-b"
+  "覆盖率": "team-b"
+  "Testbench": "team-b"
+  "波形": "team-b"
+  "Verdi": "team-b"
+  "CDC": "team-b"
+  "回归": "team-b"
+
+  # Team C keywords
+  "飞书": "team-c"
+  "多维表格": "team-c"
+  "Bitable": "team-c"
+  "任务同步": "team-c"
+  "月度任务": "team-c"
+  "项目管理": "team-c"
+  "周报": "team-c"
+  "月报": "team-c"
+  "OKR": "team-c"
+
+  # Team D keywords
+  "架构图": "team-d"
+  "系统架构": "team-d"
+  "拓扑图": "team-d"
+  "SVG": "team-d"
+  "可视化": "team-d"
+  "流程图": "team-d"
+  "部署图": "team-d"
+  "数据流": "team-d"
+
+# =============================================================================
+# Default Behavior
+# =============================================================================
+# What to do when no agent matches
+# =============================================================================
+default:
+  # Options:
+  # - "ask_user": Show agent selection UI to user
+  # - "route_to_default": Route to a default agent
+  # - "return_error": Return an error message
+  when_unsure: "ask_user"
+
+  # Default agent when route_to_default is used
+  default_agent: "team-a"
+
+  # Confidence threshold for auto-routing (0.0 - 1.0)
+  # If confidence >= threshold, auto-route without asking
+  auto_route_threshold: 0.7
+
+  # Minimum confidence to include agent in alternatives list
+  min_alternative_confidence: 0.3
+
+  # Maximum number of alternatives to return
+  max_alternatives: 3
+
+# =============================================================================
+# LLM-Assisted Routing (Optional)
+# =============================================================================
+# When keyword matching is insufficient, use LLM for intent classification
+# =============================================================================
+llm_routing:
+  enabled: false  # Set to true to enable LLM-assisted routing
+  model: "zhipuai/glm-4-flash"  # Helper model for routing
+  max_tokens: 100
+  temperature: 0.1
+
+  # System prompt for routing LLM
+  prompt_template: |
+    你是一个路由助手。根据用户问题，选择最合适的 Agent。
+
+    可用的 Agent：
+    {{agents}}
+
+    用户问题：{{query}}
+
+    请返回 JSON 格式：
+    {"agent_id": "<agent_id>", "confidence": <0-1>, "reasoning": "<简短理由>"}

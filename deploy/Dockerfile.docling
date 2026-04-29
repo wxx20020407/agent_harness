@@ -1,0 +1,27 @@
+# Docling 文档转换服务（独立容器，CPU 模式）
+FROM python:3.11-slim
+
+# 安装系统依赖（新版 Debian 包名）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0t64 && \
+    rm -rf /var/lib/apt/lists/*
+
+# 配置清华 pip 源
+RUN mkdir -p /root/.config/pip && \
+    printf '[global]\nindex-url = https://pypi.tuna.tsinghua.edu.cn/simple\ntrusted-host = pypi.tuna.tsinghua.edu.cn\n' \
+      > /root/.config/pip/pip.conf
+
+# 安装 docling + API 框架
+RUN pip install --no-cache-dir docling flask
+
+# 复制 API 服务代码
+COPY deploy/docling-server.py /app/server.py
+
+WORKDIR /app
+EXPOSE 5000
+
+# HuggingFace 模型缓存目录（运行时挂载）
+ENV HF_HOME=/models
+ENV TORCH_HOME=/models/torch
+
+CMD ["python", "server.py"]

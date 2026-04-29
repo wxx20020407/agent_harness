@@ -1,0 +1,43 @@
+# 依赖（预装到本地，不提交）
+node_modules/
+src/api/node_modules/
+src/ui/node_modules/
+
+# UI 构建产物
+dist/
+
+# Docker 镜像 tar 文件
+images/
+*.tar
+*.tar.gz
+
+# 环境变量（含密钥，绝不提交）
+.env
+
+# 临时文件
+.crane-tmp/
+
+# 知识库、技能和附件不提交（所有团队）
+teams/*/kb/
+teams/*/skills/
+teams/*/attachments/
+teams/*/process_result/
+
+# 备用的docling模型，环境，log不提交
+models/
+logs/
+
+venv-docling/
+
+docling_luo/
+
+deploy/bak_*
+
+.claude/
+.github/
+
+src/frontend_new_build.zip
+
+data/messages/
+src/file_search/__pycache__/
+src/memory/__pycache__/
